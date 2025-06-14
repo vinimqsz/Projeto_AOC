@@ -1,0 +1,169 @@
+#esboço do código do projeto!
+
+.data #alocações na memória 
+
+moradores: .space 4000 #espaço na memória para colocar os nomes dos moradores por apartamento
+
+qtd_moradores: .space 40 #uma contagem dos moradores por apartamento
+
+veiculos: .space 40 #vai indicar o tipo do veículo por apartamento (não pode carro e moto ao mesmo tempo)
+
+#strings que serão mostradas de auxílio
+
+msg_menu: .asciiz "\nComandos:\n1 - Adicionar morador\n2 - Adicionar veículo\n"
+msg_escolha: .asciiz "\nDigite a opção desejada: "
+msg_apt: .asciiz "Digite o numero do apartamento (0-39): "
+msg_nome: .asciiz "Digite o nome completo do morador: "
+msg_tipoveiculo: .asciiz "Digite 1 para inserir um carro ou 2 para moto: "
+msg_1_moto_ok: .asciiz "Moto cadastrada com sucesso.\n"
+msg_2_moto_ok: .asciiz "Segunda moto cadastrada.\n"
+msg_limite_moto: .asciiz "Já existem duas motos cadastradas.\n"
+msg_ja_tem_carro: .asciiz "Já existe um carro nesse apt.\n"
+msg_carro_ok: .asciiz "Carro cadastrado com sucesso.\n"
+msg_max_moradores: .asciiz "Máximo de moradores atingido.\n"
+msg_morador_ok: .asciiz "Morador cadastrado com sucesso.\n"
+
+.text #as instruções em si
+.globl main
+
+main:
+loop_menu: #o loop do menu principal
+
+    li $v0, 4 #código syscall de imprimir string
+    la $a0, msg_menu
+    syscall
+
+    li $v0, 4 #código syscall de imprimir string
+    la $a0, msg_escolha
+    syscall
+
+    li $v0, 5     #ler um inteiro e guardar no registrador
+    syscall
+    move $t0, $v0 #mover o valor de um registrador pro outro
+
+    beq $t0, 1, adicionar_morador #se for 1, é pra adicionar morador
+    beq $t0, 2, adicionar_veiculo #se for 2, é pra adicionar veículo
+    j loop_menu #voltar para o menu principal
+
+#Adicionar Morador
+adicionar_morador:
+    li $v0, 4
+    la $a0, msg_apt #imprimir string pra digitar o número do apt
+    syscall
+
+    li $v0, 5 #ler um inteiro e guardar no registrador
+    syscall
+    move $t1, $v0  #t1 guarda o número do apt
+
+    lb $t2, qtd_moradores($t1)  #t2 recebe a quantidade atual de moradores
+
+    li $t3, 5 #colocando o limite 5 em t3
+    bge $t2, $t3, limite_morador #se a quantidade for maior que 5, vai saltar para o branch do limite de moradores
+
+    #alocando posições
+    li $t4, 100 #alocar o espaço na memória para os apartamentos
+    mul $t5, $t1, $t4 #multiplica o número do apt por 100
+    li $t6, 20 #alocar espaço para os nomes do moradores
+    mul $t7, $t2, $t6 #multiplica o número de moradores pelo tamanho do nome
+    add $t8, $t5, $t7 #endereço final onde o nome será armazenado
+
+    li $v0, 4
+    la $a0, msg_nome #exibição da mensagem pedindo pra inserir um nome
+    syscall
+
+    li $v0, 8        #ler string
+    la $a1, moradores
+    add $a1, $a1, $t8 #ler o nome do morador e deslocar ele pra que seja alocado no array de moradores
+    li $a2, 20
+    syscall
+
+    addi $t2, $t2, 1 #atualização/incrementação do número de moradores 
+    sb $t2, qtd_moradores($t1) #atualização do arrayda quantidade de moradores
+
+    li $v0, 4
+    la $a0, msg_morador_ok #imprimir a mensagem que o morador foi cadastrado
+    syscall
+
+    j loop_menu #voltar pro loop do menu
+
+limite_morador:
+    li $v0, 4 #impressão da mensagem do máximo de moradores atingido
+    la $a0, msg_max_moradores
+    syscall
+    j loop_menu
+
+#Adicionar Veículo
+adicionar_veiculo:
+    li $v0, 4 
+    la $a0, msg_apt #pra exibir a mensagem pra colocar o número do apt
+    syscall
+
+    li $v0, 5
+    syscall
+    move $t1, $v0  #t1 pra guardar o número do apt
+
+    lb $t2, veiculos($t1) #carrega do array de veículos o número de veículos cadastrados e joga em t2
+
+    li $v0, 4
+    la $a0, msg_tipoveiculo #perguntando se é carro ou se é moto
+    syscall
+
+    li $v0, 5
+    syscall
+    move $t3, $v0  #faz a leitura do tipo do veículo e armazena em t3. 1 é carro e 2 é moto
+
+    beq $t3, 1, tenta_carro #se for 1, vai pro rótulo tenta carro
+    beq $t3, 2, tenta_moto #se for 2, vai pro rótulo tenta moto
+    j loop_menu #volta pro menu
+
+tenta_carro:
+    beq $t2, 0, pode_carro #se não tiver carro, tá liberado adicionar
+    li $v0, 4
+    la $a0, msg_ja_tem_carro #se tiver carro, exibe a mensagem que já tem carro
+    syscall
+    j loop_menu #menu
+
+pode_carro:
+    li $t2, 1 #adiciona um carro no contador de veículos
+    sb $t2, veiculos($t1) #atualiza o array de veículos
+    li $v0, 4
+    la $a0, msg_carro_ok #mensagem de êxito
+    syscall
+    j loop_menu #menu
+
+tenta_moto:
+    beq $t2, 0, primeira_moto #não tem moto, pode colocar uma
+    beq $t2, 2, segunda_moto #se já tiver uma, pode colocar mais uma
+    beq $t2, 3, limite_moto #se tiver duas, não pode mais inserir
+    beq $t2, 1, ja_tem_carro_moto #já tem um carro, então não pode mais inserir moto, pq não pode os dois
+
+primeira_moto:
+    li $t2, 2 #adiciona a moto no contador de veiculos
+    sb $t2, veiculos($t1) #atualiza array
+    li $v0, 4
+    la $a0, msg_1_moto_ok #mensagem de êxito
+    syscall
+    j loop_menu #menu
+
+segunda_moto:
+    li $t2, 3 #adiciona mais uma moto no contador
+    sb $t2, veiculos($t1) #atualiza array
+    li $v0, 4
+    la $a0, msg_2_moto_ok #mensagem de êxito da segunda moto
+    syscall
+    j loop_menu #menu
+
+limite_moto:
+    li $v0, 4
+    la $a0, msg_limite_moto #exibe mensagem do limite de moto
+    syscall
+    j loop_menu
+
+ja_tem_carro_moto:
+    li $v0, 4
+    la $a0, msg_ja_tem_carro #exibe mensagem que já tem carro
+    syscall
+    j loop_menu
+
+
+
