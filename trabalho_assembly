@@ -3,10 +3,15 @@
 .data #alocações na memória 
 
 moradores: .space 4000 #espaço na memória para colocar os nomes dos moradores por apartamento
-
 qtd_moradores: .space 40 #uma contagem dos moradores por apartamento
-
 veiculos: .space 40 #vai indicar o tipo do veículo por apartamento (não pode carro e moto ao mesmo tempo)
+modelo_veiculo: .space 800  # 40 aptos × 20 bytes
+cor_veiculo:    .space 800  # 40 aptos × 20 bytes
+modelo_moto_1: .space 800  # 40 aptos × 20 bytes
+cor_moto_1:    .space 800
+modelo_moto_2: .space 800
+cor_moto_2:    .space 800
+buffer_cmd: .space 20
 
 #strings que serão mostradas de auxílio
 
@@ -22,6 +27,8 @@ msg_ja_tem_carro: .asciiz "Já existe um carro nesse apt.\n"
 msg_carro_ok: .asciiz "Carro cadastrado com sucesso.\n"
 msg_max_moradores: .asciiz "Máximo de moradores atingido.\n"
 msg_morador_ok: .asciiz "Morador cadastrado com sucesso.\n"
+msg_modelo: .asciiz "Digite o modelo do veículo: "
+msg_cor:    .asciiz "Digite a cor do veículo: "
 
 .text #as instruções em si
 .globl main
@@ -29,21 +36,28 @@ msg_morador_ok: .asciiz "Morador cadastrado com sucesso.\n"
 main:
 loop_menu: #o loop do menu principal
 
-    li $v0, 4 #código syscall de imprimir string
+    li $v0, 4
     la $a0, msg_menu
     syscall
 
-    li $v0, 4 #código syscall de imprimir string
+    li $v0, 4
     la $a0, msg_escolha
     syscall
 
-    li $v0, 5     #ler um inteiro e guardar no registrador
+    li $v0, 8            # lê string (até ENTER)
+    la $a0, buffer_cmd   # buffer para armazenar a string
+    li $a1, 20           # máximo 20 caracteres
     syscall
-    move $t0, $v0 #mover o valor de um registrador pro outro
 
-    beq $t0, 1, adicionar_morador #se for 1, é pra adicionar morador
-    beq $t0, 2, adicionar_veiculo #se for 2, é pra adicionar veículo
-    j loop_menu #voltar para o menu principal
+    lb $t0, buffer_cmd   # pega o primeiro caractere digitado
+
+    li $t1, 49           # ASCII de '1'
+    beq $t0, $t1, adicionar_morador
+
+    li $t1, 50           # ASCII de '2'
+    beq $t0, $t1, adicionar_veiculo
+
+    j loop_menu
 
 #Adicionar Morador
 adicionar_morador:
@@ -126,6 +140,9 @@ tenta_carro:
 pode_carro:
     li $t2, 1 #adiciona um carro no contador de veículos
     sb $t2, veiculos($t1) #atualiza o array de veículos
+    
+    jal ler_modelo_e_cor_carro
+    
     li $v0, 4
     la $a0, msg_carro_ok #mensagem de êxito
     syscall
@@ -140,6 +157,9 @@ tenta_moto:
 primeira_moto:
     li $t2, 2 #adiciona a moto no contador de veiculos
     sb $t2, veiculos($t1) #atualiza array
+    
+    jal ler_modelo_e_cor_moto1
+    
     li $v0, 4
     la $a0, msg_1_moto_ok #mensagem de êxito
     syscall
@@ -148,6 +168,9 @@ primeira_moto:
 segunda_moto:
     li $t2, 3 #adiciona mais uma moto no contador
     sb $t2, veiculos($t1) #atualiza array
+    
+    jal ler_modelo_e_cor_moto2
+    
     li $v0, 4
     la $a0, msg_2_moto_ok #mensagem de êxito da segunda moto
     syscall
@@ -165,5 +188,88 @@ ja_tem_carro_moto:
     syscall
     j loop_menu
 
+#Perguntar a cor e o modelo do veículo
+#carro
+ler_modelo_e_cor_carro:
+    move $t4, $t1  # preserva o número do apt
 
+    li $v0, 4
+    la $a0, msg_modelo
+    syscall
+
+    li $v0, 8
+    la $a1, modelo_veiculo
+    li $a2, 20
+    mul $t9, $t4, 20
+    add $a1, $a1, $t9
+    syscall
+
+    li $v0, 4
+    la $a0, msg_cor
+    syscall
+
+    li $v0, 8
+    la $a1, cor_veiculo
+    li $a2, 20
+    mul $t9, $t4, 20
+    add $a1, $a1, $t9
+    syscall
+
+    jr $ra
+
+#moto
+ler_modelo_e_cor_moto1:
+    move $t4, $t1  # preserva o número do apt
+
+    li $v0, 4
+    la $a0, msg_modelo
+    syscall
+
+    li $v0, 8
+    la $a1, modelo_moto_1
+    li $a2, 20
+    mul $t9, $t4, 20
+    add $a1, $a1, $t9
+    syscall
+
+    li $v0, 4
+    la $a0, msg_cor
+    syscall
+
+    li $v0, 8
+    la $a1, cor_moto_1
+    li $a2, 20
+    mul $t9, $t4, 20
+    add $a1, $a1, $t9
+    syscall
+
+    jr $ra
+
+#moto 2
+ler_modelo_e_cor_moto2:
+    move $t4, $t1  # preserva o número do apt
+
+    li $v0, 4
+    la $a0, msg_modelo
+    syscall
+
+    li $v0, 8
+    la $a1, modelo_moto_2
+    li $a2, 20
+    mul $t9, $t4, 20
+    add $a1, $a1, $t9
+    syscall
+
+    li $v0, 4
+    la $a0, msg_cor
+    syscall
+
+    li $v0, 8
+    la $a1, cor_moto_2
+    li $a2, 20
+    mul $t9, $t4, 20
+    add $a1, $a1, $t9
+    syscall
+
+    jr $ra
 
