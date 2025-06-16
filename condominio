@@ -1,0 +1,577 @@
+# =============================================================
+# Grupo: Adriano Lucas, Emmanuel Nascimento, Renato Barbosa e Vinícius Marques
+# Atividade: Projeto 1VA
+# Disciplina: Arquitetura e Organização de Computadores
+# Semestre Letivo: 4o
+# Descrição:
+# Sistema de gerenciamento de condomínio com cadastro de moradores e veículos.
+# O sistema é operado por um shell de comandos que permite adicionar/remover moradores e veículos,
+# limpar apartamentos, exibir informações e salvar/recarregar dados em arquivo.
+# =============================================================
+
+# =============================================================
+# 	      PROGRAMA PRINCIPAL (SHELL DO CONDOMÍNIO)
+# =============================================================
+
+.data
+
+# =============================================================
+# 		       ESTRUTURA DE DADOS
+# =============================================================
+banner: .asciiz "CND-shell>> "     	# Texto do SHELL 
+buffer: .space 100                 	# Reserva espaço para leitura de comando
+tokens: .space 100			# Buffer para tokens
+token_count: .word 0			# Contador de Tokens
+
+# ============================================================
+# 		  Mapeamento dos Apartamentos
+# =============================================================
+
+ap_map: .word 101,102,103,104,201,202,203,204,301,302,303,304,401,402,403,404
+	.word 501,502,503,504,601,602,603,604,701,702,703,704,801,802,803,804
+	.word 901,902,903,904,1001,1002,1003,1004 # 40 Apartamentos
+
+# =============================================================
+# 			Armazenamento
+# =============================================================
+
+# ===============================
+#         Para Moradores:
+# ===============================
+ap_status: .space 40			# 0 = vazio, 1 = ocupado
+moradores: .space 6000             	# 40 Apartamentos * 5 Moradores * 30 chars
+qtd_moradores: .space 40           	# Número de moradores por AP
+
+# ===============================
+#         Para Veículos:
+# ===============================
+
+tipo_veiculo: .space 40     		# 0 = Nada, 1 = carro, 2 = Moto 1, 3 = motos 2
+modelo_carro: .space 800    		# 40 * 20, Suporte a 20 bytes por modelo
+cor_carro: .space 600       		# 40 * 15, Suporte a 15 bytes por modelo
+
+modelo_moto1: .space 800    		# 40 * 20, Suporte a 20 bytes por modelo
+cor_moto1: .space 600       		# 40 * 15, Suporte a 15 bytes por modelo
+
+modelo_moto2: .space 800    		# 40 * 20, Suporte a 20 bytes por modelo
+cor_moto2: .space 600       		# 40 * 15, Suporte a 15 bytes por modelo
+
+# ===============================
+#     Arquivo de Persistência
+# ===============================
+file_name: .asciiz "condominio.dat"	# Nome do arquivo para salvar
+file_buffer: .space 15000		# Quantidade de espaço para esse arquivo (+ ou - 13000), 15000 para garantia
+
+
+# ===============================
+#            Erros
+# ===============================
+err_invalid_cmd:    .asciiz "Comando invalido\n"
+err_ap_invalid:     .asciiz "Falha: AP invalido\n"
+err_ap_full_res:    .asciiz "Falha: AP com numero max de moradores\n"
+err_res_not_found:  .asciiz "Falha: morador nao encontrado\n"
+err_ap_full_veh:    .asciiz "Falha: AP com numero max de automoveis\n"
+err_invalid_type:   .asciiz "Falha: tipo invalido\n"
+err_veh_not_found:  .asciiz "Falha: automovel nao encontrado\n"
+info_ap_empty:      .asciiz "Apartamento vazio\n"
+
+# ===============================
+#      Strings para info_ap
+# ===============================
+info_ap_header:     .asciiz "AP: "
+info_residents:     .asciiz "Moradores:\n"
+info_car:           .asciiz "Carro:\n\tModelo: "
+info_motorcycle:    .asciiz "Moto:\n\tModelo: "
+info_color:         .asciiz "\n\tCor: "
+
+# ===============================
+#      Strings para info_geral
+# ===============================
+info_general_non_empty: .asciiz "Nao vazios:\t"
+info_general_empty:     .asciiz "Vazios:\t\t"
+info_general_percent:   .asciiz "%\n"
+info_general_total:     .asciiz "Total de apartamentos: 40\n"
+
+# ===============================
+#      Mensagens de Sucesso
+# ===============================
+success_add_res:    .asciiz "Morador adicionado com sucesso\n"
+success_rem_res:    .asciiz "Morador removido com sucesso\n"
+success_add_veh:    .asciiz "Veiculo adicionado com sucesso\n"
+success_rem_veh:    .asciiz "Veiculo removido com sucesso\n"
+success_clr_ap:     .asciiz "Apartamento limpo com sucesso\n"
+success_save:       .asciiz "Dados salvos com sucesso\n"
+success_load:       .asciiz "Dados carregados com sucesso\n"
+success_format:     .asciiz "Sistema formatado com sucesso\n"
+
+# ===============================
+#     	    Comandos
+# ===============================
+
+ad_morador: .asciiz 'ad_morador'
+rm_morador: .asciiz 'rm_morador'
+ad_auto: .asciiz 'ad_auto'
+rm_auto: .asciiz 'rm_auto'
+limpar_ap: .asciiz 'limpar_ap'
+info_ap: .asciiz 'info_ap'
+info_geral: .asciiz 'info_geral'
+salvar: .asciiz 'salvar'
+recarregar: .asciiz 'recarregar'
+formatar: .asciiz 'formatar'
+
+
+# =============================================================
+# 			CÓDIGO PRINCIPAL
+# =============================================================
+
+.text
+.globl main
+
+main:
+	jal load_from_file	# Carrega dados ao Iniciar
+main_loop:
+    # Exibe banner
+    li $v0, 4
+    la $a0, banner
+    syscall
+    
+    # Lê comando
+    li $v0, 8
+    la $a0, buffer
+    li $a1, 100
+    syscall
+    
+    # Processa comando
+    jal parse_command
+    
+    # Verifica comandos especiais (exit, etc)
+    # ...
+    
+    j main_loop
+
+# =============================================================
+# 		     FUNÇÕES DE COMANDOS
+# =============================================================
+
+# ======================================
+# Função: parse_command
+# Descrição: Divide o comando em tokens e chama função correspondente
+# ======================================
+parse_command:
+    # 1. Tokenização (dividir por '-')
+    # 2. Verificar primeiro token:
+    #    - Se "ad_morador": jal cmd_add_resident
+    #    - Se "rm_morador": jal cmd_remove_resident
+    #    - ... etc
+    # 3. Se não reconhecer: imprimir erro
+    
+    jr $ra
+
+# ======================================
+# Função: str_to_int
+# Descrição: Converte string para inteiro
+# Entrada: $a0 = endereço da string
+# Saída: $v0 = valor inteiro (-1 se inválido)
+# ======================================
+str_to_int:
+    	# Inicializações
+    	li $v0, 0              # Inicializa resultado
+    	li $t1, 10             # Base decimal
+    	li $t4, 0              # Flag de dígito válido (0 = nenhum dígito)
+    
+    	# Carrega primeiro caractere
+    	lb $t0, 0($a0)
+   	beqz $t0, stoi_error   # String vazia: erro
+    
+stoi_loop:
+    	lb $t0, 0($a0)         # Carrega caractere
+    	beqz $t0, stoi_done    # Fim da string: termina
+    
+    	# Verifica se é dígito
+    	blt $t0, '0', stoi_error
+    	bgt $t0, '9', stoi_error
+    
+    	li $t4, 1              # Marca que pelo menos um dígito válido foi encontrado
+    	sub $t0, $t0, '0'      # Converte char para int
+    
+    	# resultado = resultado * 10 + dígito
+    	mul $v0, $v0, $t1
+    	add $v0, $v0, $t0
+    
+    	addi $a0, $a0, 1       # Próximo caractere
+    	j stoi_loop
+
+stoi_error:
+    	# Se nenhum dígito válido foi encontrado, retorna erro
+    	beqz $t4, stoi_invalid
+    
+    	# Se alguns dígitos foram válidos mas encontrou caractere inválido, ainda é erro
+stoi_invalid:
+    	li $v0, -1             # Retorna -1 para erro
+
+stoi_done:
+    	# Se passou pelo loop mas não encontrou dígitos válidos
+    	beqz $t4, stoi_invalid
+    	jr $ra
+
+# ========================================
+# Função: tokenize
+# Entrada: $a0 = endereço do buffer de comando
+# Saída: Preenche array de tokens e token_count
+# ========================================
+
+tokenize:
+    la $t0, tokens
+    li $t1, 0           # Contador de tokens
+    move $t2, $a0       # Ponteiro no buffer
+    
+token_loop:
+    lb $t3, 0($t2)
+    beqz $t3, token_done
+    beq $t3, '\n', token_done
+    beq $t3, '-', next_token
+    
+    # Armazena início do token
+    sw $t2, 0($t0)
+    
+find_end:
+    addi $t2, $t2, 1
+    lb $t3, 0($t2)
+    beqz $t3, end_token
+    beq $t3, '\n', end_token
+    beq $t3, '-', end_token
+    j find_end
+
+end_token:
+    # Substitui delimitador por null
+    sb $zero, 0($t2)
+    addi $t0, $t0, 4    # Próximo slot de token
+    addi $t1, $t1, 1    # Incrementa contador
+    addi $t2, $t2, 1    # Próximo caractere
+    j token_loop
+
+next_token:
+    addi $t2, $t2, 1
+    j token_loop
+
+token_done:
+    sw $t1, token_count
+    jr $ra
+
+# ======================================
+# Função: get_ap_index
+# Descrição: Este comando verifica qual apartamento está sendo utilizado.
+# Entrada: $a0 = string com número do AP
+# Saída: $v0 = índice (0-39) ou -1 se inválido
+# ======================================
+get_ap_index:
+    	# Converte string para inteiro
+    	jal str_to_int
+    	move $t0, $v0
+    
+    	# Procura no ap_map
+    	la $t1, ap_map
+    	li $t2, 0
+    
+search_loop:
+    	lw $t3, 0($t1)
+    	beq $t3, $t0, found
+    	addi $t1, $t1, 4
+    	addi $t2, $t2, 1
+   	 blt $t2, 40, search_loop
+    	
+    	# Não encontrado
+    	li $v0, -1
+    	jr $ra
+    
+found:
+    	move $v0, $t2
+    	jr $ra
+
+# ======================================
+# Função: cmd_add_morador
+# Descrição: Este comando adiciona um morador a um apartamento especificado
+# Comando: ad_morador-<option1>-<option2>
+# ======================================
+cmd_add_morador:
+    	# 1. Pegar Apartamento com get_ap_index
+    	# 2. Verificar limite de moradores
+    	# 3. Adicionar morador
+    	# 4. Atualizar ap_status se necessário
+    	jr $ra
+
+# ======================================
+# Função: cmd_rem_morador
+# Descrição: Este comando Remove um morador a um apartamento especificado
+# Comando: rm_morador-<option1>-<option2>
+# ======================================
+cmd_rem_morador:
+	# 1. Pegar Apartamento com get_ap_index
+    	# 2. Verificar limite de moradores
+    	# 3. remover morador
+    	# 4. Atualizar ap_status se necessário
+	jr $ra
+	
+# ======================================
+# Função: cmd_add_automovel
+# Descrição: Este comando adiciona um automóvel a um apartamento especificado
+# Comando: ad_auto-<option1>-<option2>-<option3>-<option4>
+# ======================================
+cmd_add_automovel:
+	# 1. Pegar Apartamento com get_ap_index
+    	# 2. Verificar limite de automóveis
+    	# 3. adicionar automóvel
+    	# 4. Atualizar tipo_veiculo se necessário
+	jr $ra
+
+# ======================================
+# Função: cmd_rem_automovel
+# Descrição: Este comando remove um automóvel a um apartamento especificado
+# Comando: rm_auto-<option1>-<option2>-<option3>-<option4>
+# ======================================
+cmd_rem_automovel:
+	# 1. Pegar Apartamento com get_ap_index
+    	# 2. Verificar limite de automóveis
+    	# 3. remover automóvel
+    	# 4. Atualizar tipo_veiculo se necessário
+	jr $ra
+
+# ======================================
+# Função: cmd_clr_apartamento
+# Descrição: Este comando limpa tudo de um apartamento especificado
+# Comando: limpar_ap-<option1>
+# ======================================
+
+cmd_clr_apartamento:
+	# 1. Pegar Apartamento com get_ap_index
+	# 2. limpar tudo
+	# 3. atualizar ap_status se necessário
+	jr $ra
+	
+# ======================================
+# Função: md_info_apartamento
+# Descrição: Este comando mostra informações de um apartamento especificado
+# Comando: info_ap-<option1>
+# ======================================
+cmd_info_apartamento:
+	
+	jr $ra
+
+# ======================================
+# Função: cmd_info_geral
+# Descrição: Este comando apresenta o panorama geral de apartamentos vazios e não vazios
+# Comando: info_geral
+# ======================================
+cmd_info_geral:
+
+	jr $ra
+	
+
+# ======================================
+#       Persistência em Arquivo
+# ======================================
+
+
+
+# ======================================
+# Função: cmd_salvar
+# Descrição: Este comando salva tudo em "condominio.dat"
+# Comando: salvar
+# ======================================
+cmd_salvar:
+    # 1. Abrir arquivo para escrita
+    # 2. Escrever estruturas de dados
+    # 3. Fechar arquivo
+    jr $ra
+
+
+# ======================================
+# Função: cmd_recarregar
+# Descrição: Recarrega as informações salvas no arquivo externo na execução atual do programa. 
+# Modificações não salvas serão perdidas e as informações salvas anteriormente recuperadas.  
+# Comando: recarregar
+# ======================================
+cmd_recarregar:
+
+	jr $ra
+
+# ======================================
+# Função: cmd_formatar
+# Descrição: Apaga todas as informações da execução atual do programa,
+# deixando todos os apartamentos vazios. Este comando não deve salvar automaticamente no arquivo externo,
+# sendo necessário usar posteriormente o comando “salvar” para registrar a formação no arquivo externo.
+# Comando: formatar
+# ======================================
+cmd_formatar:
+
+	jr $ra
+
+# ======================================
+# Função: load_from_file
+# Descrição: Este comando carrega os apartamentos (se tiver)  de "condominio.dat"
+# ======================================
+load_from_file:
+    # 1. Abrir arquivo para leitura
+    # 2. Verificar se existe
+    # 3. Ler dados para estruturas
+    # 4. Fechar arquivo
+    jr $ra
+
+# ======================================
+# Funções de String (da Lista de Exercício)
+# ======================================
+
+# ======================================
+# Função: strcpy = String Copy
+# Descrição: Copia string de origem para destino
+# Parâmetros:
+#   $a0 - endereço do destino
+#   $a1 - endereço da origem
+# Retorno:
+#   $v0 - endereço original do destino
+# ======================================
+strcpy:
+    move $t5, $a0       # Salva endereço original do destino
+    
+strcpy_loop:
+    lb $t0, 0($a1)      # Carrega byte da origem
+    sb $t0, 0($t5)      # Armazena byte no destino
+    beqz $t0, strcpy_done # Se byte for NULL, termina
+    addi $t5, $t5, 1    # Avança ponteiro do destino
+    addi $a1, $a1, 1    # Avança ponteiro da origem
+    j strcpy_loop       # Repete o loop
+    
+strcpy_done:
+    move $v0, $a0       # Retorna endereço original do destino
+    jr $ra              # Retorna ao chamador
+
+# ======================================
+# Função: memcpy = Memory Copy
+# Descrição: Copia blocos de memória
+# Parâmetros:
+#   $a0 - endereço do destino
+#   $a1 - endereço da origem
+#   $a2 - número de bytes a copiar
+# Retorno:
+#   $v0 - endereço original do destino
+# ======================================
+memcpy:
+    move $v0, $a0       # Salva endereço original do destino
+    move $t2, $a2       # Configura contador de bytes
+    
+memcpy_loop:
+    beqz $t2, memcpy_done # Se contador = 0, termina
+    lb $t0, 0($a1)      # Carrega byte da origem
+    sb $t0, 0($a0)      # Armazena byte no destino
+    addi $a0, $a0, 1    # Avança destino
+    addi $a1, $a1, 1    # Avança origem
+    addi $t2, $t2, -1   # Decrementa contador
+    j memcpy_loop       # Repete o loop
+    
+memcpy_done:
+    jr $ra              # Retorna ao chamador
+
+# ======================================
+# Função: strcmp = String Comparator
+# Descrição: Compara duas strings
+# Parâmetros:
+#   $a0 - endereço da primeira string
+#   $a1 - endereço da segunda string
+# Retorno:
+#   $v0 - 0 (igual), negativo (str1 < str2), positivo (str1 > str2)
+# ======================================
+strcmp:
+strcmp_loop:
+    lb $t0, 0($a0)      # Carrega byte de str1
+    lb $t1, 0($a1)      # Carrega byte de str2
+    beqz $t0, strcmp_check # Se fim de str1, verifica str2
+    beqz $t1, strcmp_pos # Se fim de str2, str1 é maior
+    blt $t0, $t1, strcmp_neg # Se str1 < str2, retorna negativo
+    bgt $t0, $t1, strcmp_pos # Se str1 > str2, retorna positivo
+    addi $a0, $a0, 1    # Avança str1
+    addi $a1, $a1, 1    # Avança str2
+    j strcmp_loop       # Repete comparação
+    
+strcmp_check:
+    beqz $t1, strcmp_eq # Se ambas terminaram, são iguais
+strcmp_neg:
+    li $v0, -1          # Retorna -1 (str1 < str2)
+    jr $ra              
+strcmp_pos:
+    li $v0, 1           # Retorna 1 (str1 > str2)
+    jr $ra              
+strcmp_eq:
+    li $v0, 0           # Retorna 0 (strings iguais)
+    jr $ra              
+
+# ======================================
+# Função: strncmp = String N Comparator
+# Descrição: Compara até n caracteres de duas strings
+# Parâmetros:
+#   $a0 - endereço da primeira string
+#   $a1 - endereço da segunda string
+#   $a2 - número máximo de caracteres a comparar
+# Retorno:
+#   $v0 - 0 (igual), negativo (str1 < str2), positivo (str1 > str2)
+# ======================================
+strncmp:
+    li $v0, 0           # Inicializa retorno como 0 (igual)
+    beqz $a2, strncmp_done # Se num=0, retorna 0 imediatamente
+    
+strncmp_loop:
+    lb $t0, 0($a0)      # Carrega byte de str1
+    lb $t1, 0($a1)      # Carrega byte de str2
+    beqz $a2, strncmp_done # Se contador=0, termina
+    beqz $t0, strncmp_check # Se fim de str1, verifica str2
+    beqz $t1, strncmp_diff # Se fim de str2, strings diferem
+    blt $t0, $t1, strncmp_neg # str1 < str2
+    bgt $t0, $t1, strncmp_pos # str1 > str2
+    addi $a0, $a0, 1    # Avança str1
+    addi $a1, $a1, 1    # Avança str2
+    addi $a2, $a2, -1   # Decrementa contador
+    j strncmp_loop      # Continua comparação
+    
+strncmp_check:
+    beqz $t1, strncmp_done # Se str2 também terminou, são iguais
+strncmp_neg:
+    li $v0, -1          # Retorna -1
+    jr $ra              
+strncmp_pos:
+    li $v0, 1           # Retorna 1
+    jr $ra              
+strncmp_diff:
+    sub $v0, $t0, $t1   # Calcula diferença ASCII
+strncmp_done:
+    jr $ra              # Retorna ao chamador
+
+# ======================================
+# Função: strcat = String Concatenator
+# Descrição: Concatena duas strings
+# Parâmetros:
+#   $a0 - endereço do destino
+#   $a1 - endereço da origem
+# Retorno:
+#   $v0 - endereço original do destino
+# ======================================
+strcat:
+    move $t0, $a0       # Salva endereço original do destino
+    
+strcat_find_end:
+    lb $t1, 0($t0)      # Carrega byte do destino
+    beqz $t1, strcat_copy # Se NULL, inicia cópia
+    addi $t0, $t0, 1    # Avança no destino
+    j strcat_find_end   # Continua procurando fim
+    
+strcat_copy:
+    lb $t1, 0($a1)      # Carrega byte da origem
+    sb $t1, 0($t0)      # Armazena no destino
+    beqz $t1, strcat_done # Se NULL, termina
+    addi $t0, $t0, 1    # Avança destino
+    addi $a1, $a1, 1    # Avança origem
+    j strcat_copy       # Continua cópia
+    
+strcat_done:
+    move $v0, $a0       # Retorna endereço original
+    jr $ra              # Retorna ao chamador
+
+
